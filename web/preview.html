@@ -1,0 +1,86 @@
+{{if .Err}}
+<p class="err">{{.Err}}</p>
+{{else}}
+{{if .DateFields}}
+<p class="hint">Read the date from these fields. If an item has a date in several of them, the first ticked one is used. The result is a field called <code>date</code> that you can use in step 3.</p>
+{{range .DateFields}}
+<label class="opt"><input type="checkbox" data-extract value="{{.Field}}"{{if has $.ExtractFrom .Field}} checked{{end}}> {{.Field}} <span class="dim">date found in {{.Base}} of {{$.Total}} items of the feed to patch, {{.Source}} of {{$.SourceTotal}} of the feed to copy from</span></label>
+{{end}}
+{{else}}
+<p class="hint">No date found in any field with this pattern.</p>
+{{end}}
+
+<h2>3. Choose what makes an item the same in both feeds</h2>
+<p class="hint">Each rule builds a key for every item from its ticked fields, joined in the order shown, in both feeds. Items with the same key are matched. Tick several fields to use them together, like title and description. A key has to be unique within each feed. Items a rule does not match try the next rule, drag the rules to change the order.</p>
+{{if gt .Suggestion.Matched .Matched}}
+<p>Suggestion: <button type="button" onclick="pick({{.Suggestion.Spec}})">{{.Suggestion.Display}}</button> matches {{.Suggestion.Matched}} of {{.Total}} items.</p>
+{{end}}
+<div id="rules">
+  {{range $i, $rule := .Rules}}
+  <fieldset class="rule" draggable="true">
+    <legend>Rule {{inc $i}}</legend>
+    <input type="hidden" name="match" value="{{join $rule ","}}">
+    {{range $.Fields}}
+    <label class="opt"><input type="checkbox" data-field="{{.Field}}"{{if has $rule .Field}} checked{{end}}> {{.Field}} <span class="dim">{{.Matched}}</span></label>
+    {{end}}
+    <button type="button" onclick="removeRule(this)">Remove</button>
+  </fieldset>
+  {{end}}
+</div>
+<p><button type="button" onclick="addRule()">Add rule</button> <span class="dim">The number is how many items that field matches on its own.</span></p>
+
+<h2>4. Choose what to copy</h2>
+<p class="hint">The ticked fields of the matched item in the feed to copy from replace the same fields in the feed to patch. The audio file is the enclosure.</p>
+<div class="grid">
+{{range .ReplaceFields}}
+<label class="opt"><input type="checkbox" name="replace" value="{{.}}"{{if has $.ReplaceSel .}} checked{{end}}> {{.}}</label>
+{{end}}
+</div>
+
+<h2>5. Preview</h2>
+<p>{{.Matched}} of {{.Total}} items matched. Items without a match are not in your feed.</p>
+<p class="hint">Under each item, red lines are the values that get replaced and green lines are the new values from the feed to copy from.</p>
+{{range .Extracts}}
+<p class="hint">{{.Name}}: date found in {{.Base}} of {{.BaseTotal}} items of the feed to patch and {{.Source}} of {{.SourceTotal}} of the feed to copy from.</p>
+{{end}}
+<div class="items" data-size="{{.PageSize}}">
+  <div class="head"><span>Item to patch</span><span>Matched item to copy from</span></div>
+  {{range $i, $row := .Rows}}
+  <div class="entry" data-row{{if ge $i $.PageSize}} hidden{{end}}>
+    <div class="card{{if .Matched}} ok{{end}}">
+      <div class="sub">Matching</div>
+      <div>{{template "values" .Base}}</div>
+      <div>{{if .Matched}}{{template "values" .Source}}{{end}}</div>
+      {{if .Changes}}
+      <div class="diff">
+        <div class="sub">Patching</div>
+        {{range .Changes}}
+        {{if .Old}}<div class="del"><span class="k">- {{.Field}}</span>{{.Old}}</div>{{end}}
+        <div class="add"><span class="k">+ {{.Field}}</span>{{.New}}</div>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+    <p class="meta">{{if .Matched}}Matched by rule {{.Rule}}: {{.RuleFields}}{{else}}No match{{end}}</p>
+  </div>
+  {{end}}
+</div>
+{{if gt .Total .PageSize}}
+<p class="pager">
+  <button type="button" onclick="page(-1)" disabled>Previous</button>
+  <span id="pageinfo">1 to {{.PageSize}} of {{.Total}}</span>
+  <button type="button" onclick="page(1)">Next</button>
+</p>
+{{end}}
+
+<h2>6. Subscribe</h2>
+<p class="hint">This is your new feed. Subscribe to it in your podcast player.</p>
+<div class="row">
+  <input id="url" class="big" readonly value="{{.URL}}" onclick="this.select()">
+  <button type="button" onclick="copyURL(this)">Copy</button>
+</div>
+<p class="apps">Add to:
+  {{range .Apps}}<a href="{{.Href}}">{{.Name}}</a>{{end}}
+</p>
+{{end}}
+{{define "values"}}{{range .}}<div class="line"><span class="k">{{.Field}}</span><span class="v" title="{{.Value}}">{{.Value}}</span></div>{{end}}{{end}}

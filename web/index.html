@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>feedreplacer</title>
+<script src="/htmx.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem 4rem; }
+  h2 { font-size: 1.15rem; margin: 2.5rem 0 .2rem; }
+  label { display: block; margin-top: 1rem; font-weight: 600; }
+  input[type=url], input[readonly], input.text { width: 100%; box-sizing: border-box; padding: .4rem; font: inherit; }
+  table { border-collapse: collapse; margin-top: .5rem; }
+  td, th { padding: .2rem .8rem .2rem 0; text-align: left; }
+  fieldset { margin: 0; }
+  .opt { display: block; margin: .2rem 0 0; font-weight: normal; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .3rem 1rem; margin-top: .5rem; }
+  #rules { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .75rem; }
+  .rule { min-width: 12rem; cursor: grab; }
+  .rule button { margin-top: .5rem; }
+  .row { display: flex; gap: .5rem; }
+  .row button { padding: 0 1rem; font: inherit; }
+  .big { font-size: 1.1rem; padding: .7rem !important; }
+  .apps a { display: inline-block; margin: 0 .5rem .5rem 0; padding: .4rem .9rem; border: 1px solid; border-radius: .4rem; text-decoration: none; font-weight: 600; }
+  .items { margin-top: 1rem; }
+  .head, .card { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .head { padding: 0 1rem; font-weight: 700; }
+  .entry { margin-top: 1rem; }
+  .card { row-gap: 0; padding: .7rem 1rem; border: 1px solid rgba(128, 128, 128, .3); border-radius: .4rem; }
+  .card.ok { background: rgba(46, 160, 67, .06); }
+  .card > div { min-width: 0; }
+  .diff { grid-column: 1 / -1; margin-top: .6rem; border-top: 1px solid rgba(128, 128, 128, .3); padding-top: .6rem; font: .8rem/1.5 ui-monospace, monospace; }
+  .diff div { display: flex; gap: 1rem; padding: .1rem .4rem; word-break: break-all; }
+  .diff .k { flex: 0 0 9rem; opacity: .7; }
+  .diff .del { background: rgba(207, 34, 46, .12); }
+  .diff .add { background: rgba(46, 160, 67, .16); }
+  .sub { grid-column: 1 / -1; margin-bottom: .3rem; font-size: .85rem; font-weight: 600; opacity: .7; }
+  .diff .sub { display: block; padding: 0; font-family: system-ui, sans-serif; }
+  .meta { margin: .3rem 1rem 0; font-size: .85rem; opacity: .7; }
+  .line { display: flex; gap: .6rem; min-height: 1.5em; white-space: nowrap; }
+  .line .k { flex: 0 0 5.5rem; font-size: .8rem; opacity: .7; line-height: 1.9; }
+  .line .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pager { display: flex; gap: .75rem; align-items: center; }
+  .hint { margin: .2rem 0 0; font-size: .85rem; opacity: .65; }
+  .err { color: #c00; }
+  .dim { font-size: .8rem; opacity: .7; }
+</style>
+</head>
+<body>
+<h1>feedreplacer</h1>
+<p class="hint">Takes values from one podcast feed and puts them into the items of another. Go through the steps from top to bottom.</p>
+<form hx-get="/preview" hx-target="#result" hx-trigger="input delay:500ms, submit">
+  <h2>1. Add the two feeds</h2>
+  <label for="base">Feed to patch</label>
+  <input id="base" name="base" type="url" value="{{.Base}}" placeholder="https://example.com/snippets.xml" required>
+  <p class="hint">The feed you want to replace things in. Everything you do not replace is kept.</p>
+  <label for="source">Feed to copy from</label>
+  <input id="source" name="source" type="url" value="{{.Source}}" placeholder="https://example.org/full.xml" required>
+  <p class="hint">The feed that has the things you want to inject.</p>
+
+  <h2>2. Dates (optional)</h2>
+  <p class="hint">Skip this if both feeds have a publication date. Use it to match by date when one feed only has the date somewhere else, for example in the title like 2026-01-31-Episode name. The fields that hold a date show up below once both feeds are loaded.</p>
+  <label for="pattern">Date pattern</label>
+  <input id="pattern" class="text" value="{{.Pattern}}" placeholder="YYYY-MM-DD">
+  <p class="hint">How the date is written in text. Use YYYY, MM and DD, for example DD.MM.YYYY. The publication date field is read without a pattern.</p>
+
+  <div id="result"{{if .Query}} hx-get="/preview?{{.Query}}" hx-trigger="load"{{end}}><p class="dim">Paste both feed URLs to continue.</p></div>
+</form>
+<script>
+  const form = document.querySelector("form");
+  const changed = () => form.dispatchEvent(new Event("input", {bubbles: true}));
+
+  function copyURL(button) {
+    navigator.clipboard.writeText(document.getElementById("url").value);
+    button.textContent = "Copied";
+    setTimeout(() => button.textContent = "Copy", 1500);
+  }
+
+  function hidden(name, value) {
+    const i = document.createElement("input");
+    i.type = "hidden";
+    i.name = name;
+    i.value = value;
+    return i;
+  }
+
+  function syncExtract() {
+    form.querySelectorAll("input[name=extract]").forEach(i => i.remove());
+    const from = [...form.querySelectorAll("input[data-extract]:checked")].map(i => i.value);
+    const pattern = document.getElementById("pattern").value.trim();
+    if (from.length && pattern) form.append(hidden("extract", `date=${from.join(",")}=${pattern}`));
+  }
+
+  function page(delta) {
+    const table = document.querySelector(".items");
+    const rows = table.querySelectorAll("[data-row]");
+    const size = Number(table.dataset.size);
+    const current = Math.min(Math.max(Number(table.dataset.page || 0) + delta, 0), Math.ceil(rows.length / size) - 1);
+    table.dataset.page = current;
+    rows.forEach((row, i) => row.hidden = i < current * size || i >= (current + 1) * size);
+    const [previous, next] = document.querySelectorAll(".pager button");
+    previous.disabled = current === 0;
+    next.disabled = (current + 1) * size >= rows.length;
+    document.getElementById("pageinfo").textContent = `${current * size + 1} to ${Math.min((current + 1) * size, rows.length)} of ${rows.length}`;
+  }
+
+  function pick(spec) {
+    form.querySelectorAll("input[name=match]").forEach(i => i.remove());
+    spec.split("|").forEach(rule => form.append(hidden("match", rule)));
+    changed();
+  }
+
+  function addRule() {
+    const card = document.querySelector(".rule").cloneNode(true);
+    card.querySelectorAll("input[data-field]").forEach(i => i.checked = false);
+    card.querySelector("input[name=match]").value = "";
+    document.getElementById("rules").append(card);
+    changed();
+  }
+
+  function removeRule(button) {
+    if (document.querySelectorAll(".rule").length > 1) {
+      button.closest(".rule").remove();
+      changed();
+    }
+  }
+
+  form.addEventListener("input", syncExtract, true);
+
+  document.addEventListener("change", e => {
+    const card = e.target.closest(".rule");
+    if (!card) return;
+    const fields = [...card.querySelectorAll("input[data-field]:checked")].map(i => i.dataset.field);
+    card.querySelector("input[name=match]").value = fields.join(",");
+    changed();
+  });
+
+  document.body.addEventListener("htmx:afterSettle", () => {
+    syncExtract();
+    history.replaceState(null, "", "?" + new URLSearchParams(new FormData(form)));
+  });
+
+  let dragged = null;
+  document.addEventListener("dragstart", e => dragged = e.target.closest(".rule"));
+  document.addEventListener("dragover", e => {
+    const over = e.target.closest(".rule");
+    if (dragged && over && over !== dragged) e.preventDefault();
+  });
+  document.addEventListener("drop", e => {
+    const over = e.target.closest(".rule");
+    if (!dragged || !over || over === dragged) return;
+    e.preventDefault();
+    const after = dragged.compareDocumentPosition(over) & Node.DOCUMENT_POSITION_FOLLOWING;
+    over[after ? "after" : "before"](dragged);
+    dragged = null;
+    changed();
+  });
+</script>
+</body>
+</html>
