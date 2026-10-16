@@ -12,6 +12,16 @@ docker run -e PORT=8080 -p 8080:8080 ghcr.io/dewey/feedreplacer
 
 Open `/` for a small page that builds the feed URL, shows how many items match and has links to add the feed to podcast apps.
 
+The page walks through the steps from top to bottom. Everything you set is kept in its URL, so a reload keeps it.
+
+![Add the two feeds](docs/feeds.png)
+
+![Match rules and fields to copy](docs/rules.png)
+
+![Preview of the matches and the patched values](docs/preview.png)
+
+![Your new feed and podcast app links](docs/subscribe.png)
+
 ```
 http://localhost:8080/feed?base=<url>&source=<url>[&match=title][&extract=...][&replace=enclosure,itunes:duration]
 ```
